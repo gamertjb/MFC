@@ -233,6 +233,7 @@ contains
 
         type(int_bounds_info) :: isx, isy, isz
         integer :: j, k, l, i
+        real(wp) :: phip1, phim1
 
         isx%beg = -1; isy%beg = 0; isz%beg = 0
 
