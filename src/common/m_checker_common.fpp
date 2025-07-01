@@ -331,8 +331,8 @@ contains
         @:PROHIBIT(surface_tension .and. (model_eqns /= 3 .and. model_eqns /=2), &
             "The surface tension model requires model_eqns=3 or model_eqns=2")
 
-        @:PROHIBIT(surface_tension .and. num_fluids /= 2, &
-            "The surface tension model requires num_fluids=2")
+        @:PROHIBIT(surface_tension .and. num_fluids < 2, &
+            "Surface tension requires num_fluids>=2 (acts only between fluids 1 and 2)")
 
 #ifdef MFC_PRE_PROCESS
         do i = 1, num_patches
