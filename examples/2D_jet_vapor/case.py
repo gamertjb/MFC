@@ -3,20 +3,17 @@ import math
 import json
 
 pA = 101598.0
-rho_air = 1.18
-gam = 1.4
-c_l = math.sqrt(gam * pA / rho_air)
+rhoA = 1.18
+gamma_air = 1.4
+c1 = math.sqrt(gamma_air * pA / rhoA)
 
-# Cross-flow velocity (downward)
-vel_cf = 116.0
-M_air = vel_cf / c_l
-
-pS = 1.0 * pA
-velS = 12.01
-rho_water = 1000.0
+pW = pA
+velJ = 12.01
+rhoW = 1000.0
 rho_vapor = 0.6
 
-vapor_frac = 0.02  # vapor volume fraction in the injected jet
+# Small volume fraction of vapor injected with the jet
+vapor_frac = 0.02
 
 leng = 1e-3
 djet = 100e-6
@@ -24,21 +21,22 @@ Ny = 1000
 Nx = 2500
 dx = leng / Nx
 
+# Simulation time configuration
 time_end = 2.0e-4
 cfl = 0.5
 
-dt = cfl * dx / c_l
+dt = cfl * dx / c1
 Nt = int(time_end / dt)
 
-eps = 1e-5
+# Small regularization parameter
+eps = 1.0e-6
 
-# Configuring case dictionary
 print(
     json.dumps(
         {
             # Logistics
             "run_time_info": "T",
-            # Computational Domain Parameters
+            # Computational domain parameters
             "x_domain%beg": 0.0,
             "x_domain%end": 20 * djet,
             "y_domain%beg": -10 * djet,
@@ -52,30 +50,31 @@ print(
             "t_save": time_end / 20,
             "n_start": 0,
             "cfl_target": 1.0,
-            # Simulation Algorithm Parameters
+            # Simulation algorithm parameters
             "num_patches": 2,
             "model_eqns": 2,
             "alt_soundspeed": "F",
             "num_fluids": 3,
-            "mpp_lim": "F",
+            "mpp_lim": "T",
             "mixture_err": "T",
             "time_stepper": 3,
             "weno_order": 3,
             "weno_eps": 1.0e-16,
             "weno_Re_flux": "F",
+            "wenoz": "T",
             "weno_avg": "F",
-            "mapped_weno": "T",
             "null_weights": "F",
             "mp_weno": "F",
             "riemann_solver": 2,
             "wave_speeds": 1,
             "avg_state": 2,
+            "surface_tension": "T",
             "elliptic_smoothing": "T",
             "elliptic_smoothing_iters": 50,
             "bc_x%beg": -2,
             "bc_x%end": -3,
-            "bc_y%beg": -6,
-            "bc_y%end": -6,
+            "bc_y%beg": -3,
+            "bc_y%end": -3,
             "num_bc_patches": 1,
             "patch_bc(1)%dir": 1,
             "patch_bc(1)%loc": -1,
@@ -83,49 +82,54 @@ print(
             "patch_bc(1)%type": -17,
             "patch_bc(1)%centroid(2)": 0.0,
             "patch_bc(1)%length(2)": djet,
-            # Formatted Database Files Structure Parameters
+            # Formatted Database File Structures
             "format": 1,
             "precision": 2,
             "prim_vars_wrt": "T",
+            "cf_wrt": "T",
             "parallel_io": "T",
-            # Patch 1: air crossflow (top -> bottom)
+            # Patch 1: Initial cross-flow (air)
             "patch_icpp(1)%geometry": 3,
             "patch_icpp(1)%x_centroid": 0.0,
             "patch_icpp(1)%y_centroid": 0.0,
-            "patch_icpp(1)%length_x": 20 * djet,
-            "patch_icpp(1)%length_y": 20 * djet,
+            "patch_icpp(1)%length_x": 10 * leng,
+            "patch_icpp(1)%length_y": 10 * leng,
             "patch_icpp(1)%vel(1)": 0.0,
-            "patch_icpp(1)%vel(2)": -vel_cf,
+            "patch_icpp(1)%vel(2)": 116.0,
             "patch_icpp(1)%pres": pA,
-            "patch_icpp(1)%alpha_rho(1)": rho_air,
-            "patch_icpp(1)%alpha_rho(2)": eps,
-            "patch_icpp(1)%alpha_rho(3)": 0.0,
+            "patch_icpp(1)%alpha_rho(1)": rhoA,
             "patch_icpp(1)%alpha(1)": 1.0 - eps,
+            "patch_icpp(1)%cf_val": 0,
+            "patch_icpp(1)%alpha_rho(2)": eps,
             "patch_icpp(1)%alpha(2)": eps,
-            "patch_icpp(1)%alpha(3)": 0.0,
-            # Patch 2: water jet with vapor (left -> right)
+            "patch_icpp(1)%alpha_rho(3)": eps,
+            "patch_icpp(1)%alpha(3)": eps,
+            # Patch 2: Water jet with vapor
             "patch_icpp(2)%geometry": 3,
             "patch_icpp(2)%alter_patch(1)": "T",
             "patch_icpp(2)%x_centroid": 0.0,
             "patch_icpp(2)%y_centroid": 0.0,
             "patch_icpp(2)%length_x": 40 * dx,
             "patch_icpp(2)%length_y": djet,
-            "patch_icpp(2)%vel(1)": velS,
+            "patch_icpp(2)%vel(1)": velJ,
             "patch_icpp(2)%vel(2)": 0.0,
-            "patch_icpp(2)%pres": pS,
+            "patch_icpp(2)%pres": pW,
             "patch_icpp(2)%alpha_rho(1)": eps,
-            "patch_icpp(2)%alpha_rho(2)": (1 - eps - vapor_frac) * rho_water,
-            "patch_icpp(2)%alpha_rho(3)": vapor_frac * rho_vapor,
             "patch_icpp(2)%alpha(1)": eps,
-            "patch_icpp(2)%alpha(2)": 1 - eps - vapor_frac,
+            "patch_icpp(2)%alpha_rho(2)": (1.0 - eps - vapor_frac) * rhoW,
+            "patch_icpp(2)%alpha(2)": 1.0 - eps - vapor_frac,
+            "patch_icpp(2)%alpha_rho(3)": vapor_frac * rho_vapor,
             "patch_icpp(2)%alpha(3)": vapor_frac,
-            # Fluids Physical Parameters
+            "patch_icpp(2)%cf_val": 1,
+            # Fluid properties
             "fluid_pp(1)%gamma": 1.0 / (1.4 - 1.0),
             "fluid_pp(1)%pi_inf": 0.0,
             "fluid_pp(2)%gamma": 1.0 / (6.3 - 1.0),
             "fluid_pp(2)%pi_inf": 3.43e8,
             "fluid_pp(3)%gamma": 1.0 / (1.33 - 1.0),
             "fluid_pp(3)%pi_inf": 0.0,
+            "sigma": 0.0794,
+            "sigma_2": 0.05,
         }
     )
 )

@@ -449,8 +449,9 @@ module m_global_parameters
     !> @{
 
     real(wp) :: sigma
+    real(wp) :: sigma_2
     logical :: surface_tension
-    !$acc declare create(sigma, surface_tension)
+    !$acc declare create(sigma, sigma_2, surface_tension)
     !> @}
 
     integer :: momxb, momxe
@@ -661,6 +662,7 @@ contains
 
         ! Surface tension
         sigma = dflt_real
+        sigma_2 = dflt_real
         surface_tension = .false.
 
         ! Cuda aware MPI
