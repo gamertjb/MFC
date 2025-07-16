@@ -168,7 +168,7 @@ contains
             polydisperse, poly_sigma, qbmm, &
             relax, relax_model, &
             palpha_eps, ptgalpha_eps, &
-            R0_type, file_per_process, sigma, &
+            R0_type, file_per_process, sigma, sigma_2, &
             pi_fac, adv_n, adap_dt, adap_dt_tol, &
             bf_x, bf_y, bf_z, &
             k_x, k_y, k_z, w_x, w_y, w_z, p_x, p_y, p_z, &
@@ -1424,7 +1424,7 @@ contains
         !$acc update device(R_n, R_v, phi_vn, phi_nv, Pe_c, Tw, pv, M_n, M_v, k_n, k_v, pb0, mass_n0, mass_v0, Pe_T, Re_trans_T, Re_trans_c, Im_trans_T, Im_trans_c, omegaN , mul0, ss, gamma_v, mu_v, gamma_m, gamma_n, mu_n, gam)
 
         !$acc update device(acoustic_source, num_source)
-        !$acc update device(sigma, surface_tension)
+        !$acc update device(sigma, sigma_2, surface_tension)
 
         !$acc update device(dx, dy, dz, x_cb, x_cc, y_cb, y_cc, z_cb, z_cc)
 

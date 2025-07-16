@@ -332,7 +332,8 @@ Additional details on this specification can be found in [The Naca Airfoil Serie
 | `cv`   ** | Real   | Sffened-gas parameter $c_v$ of fluid.          |
 | `qv`   ** | Real   | Stiffened-gas parameter $q$ of fluid.          |
 | `qvp`  ** | Real   | Stiffened-gas parameter $q'$ of fluid.         |
-| `sigma`   | Real   | Surface tension coefficient                    |
+| `sigma`   | Real   | Surface tension coefficient (fluid 1–2)        |
+| `sigma_2` | Real   | Surface tension coefficient (fluid 1–3)        |
 | `G`       | Real   | Shear modulus of solid.                        |
 
 Fluid material's parameters. All parameters except for sigma should be prepended with `fluid_pp(i)` where $i$ is the fluid index.
@@ -354,6 +355,8 @@ Details of implementation of viscosity in MFC can be found in [Coralic (2015)](r
 - `fluid_pp(i)%%cv`, `fluid_pp(i)%%qv`, and `fluid_pp(i)%%qvp` define $c_v$, $q$, and $q'$ as parameters of $i$-th fluid that are used in stiffened gas equation of state.
 
 - `fluid_pp(i)%%G` is required for `hypoelasticity`.
+- `sigma` specifies the surface tension between fluids 1 and 2.
+- `sigma_2` specifies the surface tension between fluids 1 and 3.
 
 ### 6. Simulation Algorithm
 
@@ -475,7 +478,7 @@ If this option is false, velocity gradient is computed using finite difference s
 - `weno_avg` it activates the arithmetic average of the left and right, WENO-reconstructed, cell-boundary values.
 This option requires `weno_Re_flux` to be true because cell boundary values are only utilized when employing the scalar divergence method in the computation of velocity gradients.
 
-- `surface_tension` activates surface tension when set to ``'T'``. Requires `sigma` to be set and `num_fluids`. The color function in each patch should be assigned such that `patch_icpp(i)%cf_val = 1` in patches where `patch_icpp(i)%alpha = 1 - eps` and `patch_icpp(i)%cf_val = 0` in patches where `patch_icpp(i)%alpha = eps`. When more than two fluids are present, surface tension acts only between fluids 1 and 2.
+- `surface_tension` activates surface tension when set to ``'T'``. Requires `sigma` to be set and `num_fluids`. The color function in each patch should be assigned such that `patch_icpp(i)%cf_val = 1` in patches where `patch_icpp(i)%alpha = 1 - eps` and `patch_icpp(i)%cf_val = 0` in patches where `patch_icpp(i)%alpha = eps`. When more than two fluids are present, surface tension acts between fluids 1 and 2 while the optional `sigma_2` acts between fluids 1 and 3.
 
 - `viscous` activates viscosity when set to ``'T'``. Requires `Re(1)` and `Re(2)` to be set.
 
