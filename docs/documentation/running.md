@@ -120,7 +120,7 @@ If you want to restart a simulation,
 - For a simulation that uses a constant time step set up the initial case file with: 
     - `t_step_start` : $t_i$
     - `t_step_stop`  : $t_f$
-    - `t_step_save`  : $SF$ in which $t_i$ is the starting time, $t_f$ is the final time, and $SF$ is the saving frequency time.
+    - `t_step_save`  : $SF$ in which $t_i$ is the starting time, $t_f$ is the final time, and $SF$ is the saving frequency time. This value must be greater than $0$.
     For a simulation that uses adaptive time-stepping, set up the initial case file with:
     - `n_start` : $t_i$
     - `t_stop`  : $t_f$
@@ -144,7 +144,7 @@ If you want to restart a simulation,
 	- When using a constant time-step, alter the following:
 		- `t_step_start` : $t_s$ (the point at which the simulation will restart)
 		- `t_step_stop`  : $t_{f2}$ (new final simulation time, which can be the same as $t_f$)
-		- `t_step_save`  : ${SF}_2$ (if interested in changing the saving frequency)
+                - `t_step_save`  : ${SF}_2$ (if interested in changing the saving frequency; must remain > 0)
 
         If using a CFL-based time-step, alter the following:
 		- `n_start` : $t_s$ (the save file at which the simulation will restart)
