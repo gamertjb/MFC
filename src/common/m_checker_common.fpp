@@ -70,6 +70,7 @@ contains
         else
             @:PROHIBIT(t_step_start < 0)
             @:PROHIBIT(t_step_stop <= t_step_start)
+            @:PROHIBIT(t_step_save <= 0)
             @:PROHIBIT(t_step_save > t_step_stop - t_step_start)
         end if
     end subroutine s_check_inputs_time_stepping

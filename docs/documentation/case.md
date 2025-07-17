@@ -390,7 +390,7 @@ Details of implementation of viscosity in MFC can be found in [Coralic (2015)](r
 | `dt`                   | Real    | Time step size |
 | `t_step_start`         | Integer | Simulation starting time step |
 | `t_step_stop`          | Integer | Simulation stopping time step |
-| `t_step_save`          | Integer | Frequency to output data |
+| `t_step_save`          | Integer | Frequency to output data (must be > 0) |
 | `t_step_print`         | Integer | Frequency to print the current step number to standard output (default 1) |
 | `cfl_adap_dt`          | Logical | CFL based adaptive time-stepping |
 | `cfl_const_dt`         | Logical | CFL based non-adaptive time-stepping |
@@ -514,7 +514,7 @@ The value of `dt` needs to be sufficiently small to satisfy the Courant-Friedric
 
 - `t_step_start` and `t_step_end` define the time steps at which the simulation starts and ends.
 
-`t_step_save` is the time step interval for data output during simulation.
+`t_step_save` is the time step interval for data output during simulation and must be greater than `0`.
 To newly start the simulation, set `t_step_start = 0`.
 To restart the simulation from $k$-th time step, set `t_step_start = k`; see [Restarting Cases](running.md).
 
