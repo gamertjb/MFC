@@ -135,7 +135,7 @@ contains
 
         if (bubbles_lagrange) then
             #:for VAR in [ 'heatTransfer_model', 'massTransfer_model', 'pressure_corrector', &
-                & 'write_bubbles', 'write_bubbles_stats']
+                & 'write_bubbles', 'write_bubbles_stats', 'bubble_inlet']
                 call MPI_BCAST(lag_params%${VAR}$, 1, MPI_LOGICAL, 0, MPI_COMM_WORLD, ierr)
             #:endfor
 

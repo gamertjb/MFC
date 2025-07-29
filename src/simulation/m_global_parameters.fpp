@@ -744,6 +744,7 @@ contains
         lag_params%massTransfer_model = .false.
         lag_params%write_bubbles = .false.
         lag_params%write_bubbles_stats = .false.
+        lag_params%bubble_inlet = .false.
         lag_params%nBubs_glb = dflt_int
         lag_params%epsilonb = 1._wp
         lag_params%charwidth = dflt_real
