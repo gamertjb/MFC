@@ -300,7 +300,7 @@ SIMULATION.update({
 })
 
 for var in [ 'heatTransfer_model', 'massTransfer_model', 'pressure_corrector',
-             'write_bubbles', 'write_bubbles_stats' ]:
+             'write_bubbles', 'write_bubbles_stats', 'bubble_inlet' ]:
     SIMULATION[f'lag_params%{var}'] = ParamType.LOG
 
 for var in [ 'solver_approach', 'cluster_type', 'smooth_type', 'nBubs_glb']:

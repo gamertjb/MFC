@@ -1069,6 +1069,14 @@ contains
                 end do
 
                 call s_transfer_data_to_tmp()
+                if (lag_params%bubble_inlet) then
+                    do k = 1, nBubs
+                        if (mtn_pos(k, 3, 1) >= z_cb(p)) then
+                            mtn_pos(k, 3, 1) = z_cb(-1)
+                            mtn_posPrev(k, 3, 1) = mtn_pos(k, 3, 1)
+                        end if
+                    end do
+                end if
                 call s_write_void_evol(mytime)
                 if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
 
