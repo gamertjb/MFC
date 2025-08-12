@@ -246,7 +246,7 @@ contains
                     inlet_templates(num_inlet_templates, :) = inputBubble
                     indomain = particle_in_domain(inputBubble(1:3))
                     id = id + 1
-                    if (indomain .and. bub_id < lag_params%nBubs_glb) then
+                    if (indomain .and. bub_id < 1) then
                         bub_id = bub_id + 1
                         call s_add_bubbles(inputBubble, q_cons_vf, bub_id)
                         lag_id(bub_id, 1) = id      !global ID
@@ -257,7 +257,7 @@ contains
                 close (94)
                 if (num_inlet_templates > 0) then
                     inlet_template = inlet_templates(1, :)
-                    next_inlet_idx = mod(bub_id, num_inlet_templates) + 1
+                    next_inlet_idx = 2
                 end if
             else
                 call s_mpi_abort("Initialize the lagrange bubbles in input/lag_bubbles.dat")
@@ -1057,18 +1057,29 @@ contains
             end do
 
             call s_transfer_data_to_tmp()
-            if (lag_params%bubble_inlet .and. num_inlet_templates > 0) then
-                do k = 1, nBubs
-                    if (mtn_pos(k, 3, 1) >= z_cb(p) .and. mytime >= next_inlet_time) then
-                        mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                        mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                        mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
-                        intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
-                        intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
-                        next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
-                        next_inlet_time = mytime + lag_params%bubble_inlet_period
-                    end if
-                end do
+            if (lag_params%bubble_inlet .and. num_inlet_templates > 0 .and. mytime >= next_inlet_time) then
+                if (nBubs < lag_params%nBubs_glb) then
+                    k = nBubs + 1
+                    mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                    mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                    mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
+                    intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
+                    intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                    nBubs = k
+                else
+                    do k = 1, nBubs
+                        if (mtn_pos(k, 3, 1) >= z_cb(p)) then
+                            mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                            mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                            mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
+                            intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
+                            intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                            exit
+                        end if
+                    end do
+                end if
+                next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
+                next_inlet_time = mytime + lag_params%bubble_inlet_period
             end if
             call s_write_void_evol(mytime)
             if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
@@ -1104,18 +1115,29 @@ contains
                 end do
 
                 call s_transfer_data_to_tmp()
-                if (lag_params%bubble_inlet .and. num_inlet_templates > 0) then
-                    do k = 1, nBubs
-                        if (mtn_pos(k, 3, 1) >= z_cb(p) .and. mytime >= next_inlet_time) then
-                            mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                            mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                            mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
-                            intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
-                            intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
-                            next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
-                            next_inlet_time = mytime + lag_params%bubble_inlet_period
-                        end if
-                    end do
+                if (lag_params%bubble_inlet .and. num_inlet_templates > 0 .and. mytime >= next_inlet_time) then
+                    if (nBubs < lag_params%nBubs_glb) then
+                        k = nBubs + 1
+                        mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                        mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                        mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
+                        intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
+                        intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                        nBubs = k
+                    else
+                        do k = 1, nBubs
+                            if (mtn_pos(k, 3, 1) >= z_cb(p)) then
+                                mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                                mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                                mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
+                                intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
+                                intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                                exit
+                            end if
+                        end do
+                    end if
+                    next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
+                    next_inlet_time = mytime + lag_params%bubble_inlet_period
                 end if
                 call s_write_void_evol(mytime)
                 if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
@@ -1164,18 +1186,29 @@ contains
                 end do
 
                 call s_transfer_data_to_tmp()
-                if (lag_params%bubble_inlet .and. num_inlet_templates > 0) then
-                    do k = 1, nBubs
-                        if (mtn_pos(k, 3, 1) >= z_cb(p) .and. mytime >= next_inlet_time) then
-                            mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                            mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                            mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
-                            intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
-                            intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
-                            next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
-                            next_inlet_time = mytime + lag_params%bubble_inlet_period
-                        end if
-                    end do
+                if (lag_params%bubble_inlet .and. num_inlet_templates > 0 .and. mytime >= next_inlet_time) then
+                    if (nBubs < lag_params%nBubs_glb) then
+                        k = nBubs + 1
+                        mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                        mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                        mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
+                        intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
+                        intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                        nBubs = k
+                    else
+                        do k = 1, nBubs
+                            if (mtn_pos(k, 3, 1) >= z_cb(p)) then
+                                mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                                mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
+                                mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
+                                intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
+                                intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                                exit
+                            end if
+                        end do
+                    end if
+                    next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
+                    next_inlet_time = mytime + lag_params%bubble_inlet_period
                 end if
                 call s_write_void_evol(mytime)
                 if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()

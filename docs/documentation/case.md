@@ -797,8 +797,8 @@ When ``polytropic = 'F'``, the gas compression is modeled as non-polytropic due 
 | `diffcoefvap`         | Real    | Vapor diffusivity in the gas                              |
 
 - `nBubs_glb` Total number of bubbles. Their initial conditions need to be specified in the ./input/lag_bubbles.dat file. See the example cases for additional information.
-- `bubble_inlet` When true, bubbles leaving the top boundary simply exit the domain while new bubbles from `lag_bubbles.dat` are periodically injected at the bottom.
-- `bubble_inlet_period` Sets how often new bubbles are injected when `bubble_inlet` is enabled.
+- `bubble_inlet` When true, bubbles from `lag_bubbles.dat` are periodically injected at the bottom boundary, creating a continuous stream. Bubbles that reach the top boundary simply exit the domain.
+- `bubble_inlet_period` Time interval between consecutive bubble injections when `bubble_inlet` is enabled.
 
 - `solver_approach` Specifies the Euler-Lagrange coupling method: [1] enables a one-way coupling approach, where the bubbles do not influence the Eulerian field. [2] activates the two-way coupling approach based on [Maeda and Colonius (2018)](references.md), where the effect of the bubbles is added in the Eulerian field as source terms.
 
