@@ -149,7 +149,7 @@ print(
             # Lagrangian Bubbles
             "bubbles_lagrange": "T",
             "bubble_model": 2,  # Keller-Miksis model
-            "lag_params%nBubs_glb": 1,
+            "lag_params%nBubs_glb": 5,
             "lag_params%bubble_inlet": "T",
             "lag_params%bubble_inlet_period": bubble_inlet_period,
             "lag_params%solver_approach": 2,  # Two-way coupled
