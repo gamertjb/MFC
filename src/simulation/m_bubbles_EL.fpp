@@ -1061,11 +1061,6 @@ contains
                 gas_p(k, 1) = gas_p(k, 1) + dt*gas_dpdt(k, 1)
                 gas_mv(k, 1) = gas_mv(k, 1) + dt*gas_dmvdt(k, 1)
             end do
-            ! remove bubbles that exit the domain
-            do k = nBubs, 1, -1
-                if (mtn_pos(k, 3, 1) >= z_cb(p)) call s_remove_lag_bubble(k)
-            end do
-
             call s_transfer_data_to_tmp()
             if (lag_params%bubble_inlet .and. num_inlet_templates > 0 .and. mytime >= next_inlet_time) then
                 if (nBubs < lag_params%nBubs_glb) then
@@ -1117,11 +1112,6 @@ contains
                     mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + dt*(mtn_dveldt(k, 1:3, 1) + mtn_dveldt(k, 1:3, 2))/2._wp
                     gas_p(k, 1) = gas_p(k, 1) + dt*(gas_dpdt(k, 1) + gas_dpdt(k, 2))/2._wp
                     gas_mv(k, 1) = gas_mv(k, 1) + dt*(gas_dmvdt(k, 1) + gas_dmvdt(k, 2))/2._wp
-                end do
-
-                ! remove bubbles that exit the domain
-                do k = nBubs, 1, -1
-                    if (mtn_pos(k, 3, 1) >= z_cb(p)) call s_remove_lag_bubble(k)
                 end do
 
                 call s_transfer_data_to_tmp()
@@ -1188,11 +1178,6 @@ contains
                     mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + (2._wp/3._wp)*dt*(mtn_dveldt(k, 1:3, 1)/4._wp + mtn_dveldt(k, 1:3, 2)/4._wp + mtn_dveldt(k, 1:3, 3))
                     gas_p(k, 1) = gas_p(k, 1) + (2._wp/3._wp)*dt*(gas_dpdt(k, 1)/4._wp + gas_dpdt(k, 2)/4._wp + gas_dpdt(k, 3))
                     gas_mv(k, 1) = gas_mv(k, 1) + (2._wp/3._wp)*dt*(gas_dmvdt(k, 1)/4._wp + gas_dmvdt(k, 2)/4._wp + gas_dmvdt(k, 3))
-                end do
-
-                ! remove bubbles that exit the domain
-                do k = nBubs, 1, -1
-                    if (mtn_pos(k, 3, 1) >= z_cb(p)) call s_remove_lag_bubble(k)
                 end do
 
                 call s_transfer_data_to_tmp()
