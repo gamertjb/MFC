@@ -10,6 +10,10 @@ module m_bubbles_EL
     use m_global_parameters             !< Definitions of the global parameters
 
     use m_mpi_proxy                     !< Message passing interface (MPI) module proxy
+#ifdef MFC_MPI
+    use mpi
+    use m_mpi_common, only: mpi_p
+#endif
 
     use m_bubbles_EL_kernels            !< Definitions of the kernel functions
 
@@ -1066,6 +1070,7 @@ contains
             end do
 
             call s_transfer_data_to_tmp()
+            call s_migrate_bubbles()
             if (lag_params%bubble_inlet .and. num_inlet_templates > 0 .and. mytime >= next_inlet_time) then
                 if (nBubs < lag_params%nBubs_glb) then
                     k = nBubs + 1
@@ -1079,6 +1084,9 @@ contains
                     cell = -buff_size
                     call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                     nBubs = k
+                    !$acc update device(lag_id(k,1:2), mtn_pos(k,1:3,1), mtn_posPrev(k,1:3,1), mtn_vel(k,1:3,1), mtn_s(k,1:3,1), intfc_rad(k,1), intfc_vel(k,1))
+                    !$acc update device(bub_R0(k), Rmax_stats(k), Rmin_stats(k), gas_mg(k), gas_betaT(k), gas_betaC(k), bub_dphidt(k), gas_p(k,1), gas_mv(k,1), nBubs)
+                    call s_transfer_data_to_tmp()
                 end if
                 next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
                 next_inlet_time = mytime + lag_params%bubble_inlet_period
@@ -1119,6 +1127,7 @@ contains
                 end do
 
                 call s_transfer_data_to_tmp()
+                call s_migrate_bubbles()
                 if (lag_params%bubble_inlet .and. num_inlet_templates > 0 .and. mytime >= next_inlet_time) then
                     if (nBubs < lag_params%nBubs_glb) then
                         k = nBubs + 1
@@ -1132,6 +1141,9 @@ contains
                         cell = -buff_size
                         call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                         nBubs = k
+                        !$acc update device(lag_id(k,1:2), mtn_pos(k,1:3,1), mtn_posPrev(k,1:3,1), mtn_vel(k,1:3,1), mtn_s(k,1:3,1), intfc_rad(k,1), intfc_vel(k,1))
+                        !$acc update device(bub_R0(k), Rmax_stats(k), Rmin_stats(k), gas_mg(k), gas_betaT(k), gas_betaC(k), bub_dphidt(k), gas_p(k,1), gas_mv(k,1), nBubs)
+                        call s_transfer_data_to_tmp()
                     end if
                     next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
                     next_inlet_time = mytime + lag_params%bubble_inlet_period
@@ -1185,6 +1197,7 @@ contains
                 end do
 
                 call s_transfer_data_to_tmp()
+                call s_migrate_bubbles()
                 if (lag_params%bubble_inlet .and. num_inlet_templates > 0 .and. mytime >= next_inlet_time) then
                     if (nBubs < lag_params%nBubs_glb) then
                         k = nBubs + 1
@@ -1198,6 +1211,9 @@ contains
                         cell = -buff_size
                         call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                         nBubs = k
+                        !$acc update device(lag_id(k,1:2), mtn_pos(k,1:3,1), mtn_posPrev(k,1:3,1), mtn_vel(k,1:3,1), mtn_s(k,1:3,1), intfc_rad(k,1), intfc_vel(k,1))
+                        !$acc update device(bub_R0(k), Rmax_stats(k), Rmin_stats(k), gas_mg(k), gas_betaT(k), gas_betaC(k), bub_dphidt(k), gas_p(k,1), gas_mv(k,1), nBubs)
+                        call s_transfer_data_to_tmp()
                     end if
                     next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
                     next_inlet_time = mytime + lag_params%bubble_inlet_period
@@ -1722,6 +1738,125 @@ contains
         close (13)
 
     end subroutine s_write_lag_bubble_stats
+
+    pure subroutine s_pack_bubble(id, buf)
+        integer, intent(in) :: id
+        real(wp), dimension(21), intent(out) :: buf
+        buf(1) = real(lag_id(id, 1), wp)
+        buf(2:4) = mtn_pos(id, 1:3, 1)
+        buf(5:7) = mtn_posPrev(id, 1:3, 1)
+        buf(8:10) = mtn_vel(id, 1:3, 1)
+        buf(11) = intfc_rad(id, 1)
+        buf(12) = intfc_vel(id, 1)
+        buf(13) = bub_R0(id)
+        buf(14) = Rmax_stats(id)
+        buf(15) = Rmin_stats(id)
+        buf(16) = bub_dphidt(id)
+        buf(17) = gas_p(id, 1)
+        buf(18) = gas_mv(id, 1)
+        buf(19) = gas_mg(id)
+        buf(20) = gas_betaT(id)
+        buf(21) = gas_betaC(id)
+    end subroutine s_pack_bubble
+
+    impure subroutine s_unpack_bubble(buf)
+        real(wp), dimension(21), intent(in) :: buf
+        integer, dimension(3) :: cell
+        integer :: k
+
+        k = nBubs + 1
+        lag_id(k, 1) = int(buf(1))
+        lag_id(k, 2) = k
+        mtn_pos(k, 1:3, 1) = buf(2:4)
+        mtn_posPrev(k, 1:3, 1) = buf(5:7)
+        mtn_vel(k, 1:3, 1) = buf(8:10)
+        intfc_rad(k, 1) = buf(11)
+        intfc_vel(k, 1) = buf(12)
+        bub_R0(k) = buf(13)
+        Rmax_stats(k) = buf(14)
+        Rmin_stats(k) = buf(15)
+        bub_dphidt(k) = buf(16)
+        gas_p(k, 1) = buf(17)
+        gas_mv(k, 1) = buf(18)
+        gas_mg(k) = buf(19)
+        gas_betaT(k) = buf(20)
+        gas_betaC(k) = buf(21)
+        cell = -buff_size
+        call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
+        intfc_draddt(k, 1:lag_num_ts) = 0._wp
+        intfc_dveldt(k, 1:lag_num_ts) = 0._wp
+        gas_dpdt(k, 1:lag_num_ts) = 0._wp
+        gas_dmvdt(k, 1:lag_num_ts) = 0._wp
+        mtn_dposdt(k, 1:3, 1:lag_num_ts) = 0._wp
+        mtn_dveldt(k, 1:3, 1:lag_num_ts) = 0._wp
+        nBubs = k
+        !$acc update device(lag_id(k,1:2), mtn_pos(k,1:3,1), mtn_posPrev(k,1:3,1), mtn_vel(k,1:3,1), mtn_s(k,1:3,1), intfc_rad(k,1), intfc_vel(k,1), bub_R0(k), Rmax_stats(k), Rmin_stats(k), bub_dphidt(k), gas_p(k,1), gas_mv(k,1), gas_mg(k), gas_betaT(k), gas_betaC(k))
+        !$acc update device(intfc_draddt(k,1:lag_num_ts), intfc_dveldt(k,1:lag_num_ts), gas_dpdt(k,1:lag_num_ts), gas_dmvdt(k,1:lag_num_ts), mtn_dposdt(k,1:3,1:lag_num_ts), mtn_dveldt(k,1:3,1:lag_num_ts), nBubs)
+    end subroutine s_unpack_bubble
+
+    impure subroutine s_migrate_bubbles()
+#ifdef MFC_MPI
+        integer :: k, send_up, send_dn, recv_up, recv_dn
+        integer :: nbr_up, nbr_dn, ierr, status(MPI_STATUS_SIZE)
+        real(wp), allocatable :: buf_up(:,:), buf_dn(:,:), rbuf_up(:,:), rbuf_dn(:,:)
+        nbr_dn = bc_z%beg
+        nbr_up = bc_z%end
+        if (nbr_dn < 0) nbr_dn = MPI_PROC_NULL
+        if (nbr_up < 0) nbr_up = MPI_PROC_NULL
+
+        send_up = 0; send_dn = 0
+        do k = nBubs, 1, -1
+            if (mtn_pos(k, 3, 1) >= z_cb(p)) then
+                send_up = send_up + 1
+            else if (mtn_pos(k, 3, 1) < z_cb(-1)) then
+                send_dn = send_dn + 1
+            end if
+        end do
+
+        if (send_up > 0) allocate(buf_up(send_up, 21))
+        if (send_dn > 0) allocate(buf_dn(send_dn, 21))
+
+        send_up = 0; send_dn = 0
+        do k = nBubs, 1, -1
+            if (mtn_pos(k, 3, 1) >= z_cb(p)) then
+                send_up = send_up + 1
+                call s_pack_bubble(k, buf_up(send_up, :))
+                call s_remove_lag_bubble(k)
+            else if (mtn_pos(k, 3, 1) < z_cb(-1)) then
+                send_dn = send_dn + 1
+                call s_pack_bubble(k, buf_dn(send_dn, :))
+                call s_remove_lag_bubble(k)
+            end if
+        end do
+
+        call MPI_SENDRECV(send_up, 1, MPI_INTEGER, nbr_up, 0, recv_dn, 1, MPI_INTEGER, nbr_dn, 0, MPI_COMM_WORLD, status, ierr)
+        call MPI_SENDRECV(send_dn, 1, MPI_INTEGER, nbr_dn, 1, recv_up, 1, MPI_INTEGER, nbr_up, 1, MPI_COMM_WORLD, status, ierr)
+
+        if (send_up > 0) call MPI_SEND(buf_up, send_up*21, mpi_p, nbr_up, 2, MPI_COMM_WORLD, ierr)
+        if (send_dn > 0) call MPI_SEND(buf_dn, send_dn*21, mpi_p, nbr_dn, 3, MPI_COMM_WORLD, ierr)
+
+        if (recv_dn > 0) then
+            allocate(rbuf_dn(recv_dn, 21))
+            call MPI_RECV(rbuf_dn, recv_dn*21, mpi_p, nbr_dn, 2, MPI_COMM_WORLD, status, ierr)
+            do k = 1, recv_dn
+                call s_unpack_bubble(rbuf_dn(k, :))
+            end do
+            deallocate(rbuf_dn)
+        end if
+
+        if (recv_up > 0) then
+            allocate(rbuf_up(recv_up, 21))
+            call MPI_RECV(rbuf_up, recv_up*21, mpi_p, nbr_up, 3, MPI_COMM_WORLD, status, ierr)
+            do k = 1, recv_up
+                call s_unpack_bubble(rbuf_up(k, :))
+            end do
+            deallocate(rbuf_up)
+        end if
+
+        if (send_up > 0) deallocate(buf_up)
+        if (send_dn > 0) deallocate(buf_dn)
+#endif
+    end subroutine s_migrate_bubbles
 
     !> The purpose of this subroutine is to remove one specific particle if dt is too small.
           !! @param bub_id Particle id
