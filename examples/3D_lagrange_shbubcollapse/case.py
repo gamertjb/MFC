@@ -63,8 +63,10 @@ saveTime = 5 * 30.0e-06  # save time - sec
 # Bubble inlet timing
 start_z = -2.8  # nondimensional initial z location
 radius = 0.008  # nondimensional bubble radius
-vz = 0.314984e-3  # nondimensional upward velocity
+# increase upward velocity so a bubble crosses the domain within the run time
+vz = 0.02  # nondimensional upward velocity
 distance = (ze / x0) + radius - start_z
+# inject a new bubble once the previous one has had time to exit the domain
 bubble_inlet_period = distance / vz * 1.1
 
 # Configuring case dictionary

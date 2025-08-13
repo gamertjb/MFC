@@ -661,7 +661,7 @@ contains
 
         integer :: i, j, k, l
 
-        if (.not. adap_dt) call s_smear_voidfraction(q_prim_vf)
+        call s_smear_voidfraction(q_prim_vf)
 
         if (lag_params%solver_approach == 2) then
 
