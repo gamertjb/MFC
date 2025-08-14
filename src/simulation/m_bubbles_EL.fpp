@@ -635,11 +635,11 @@ contains
 
         if (adap_dt .and. adap_dt_stop_max > 0) call s_mpi_abort("Adaptive time stepping failed to converge.")
 
-        ! Bubbles remain in a fixed position
+        ! Translate bubbles with their prescribed velocity
         !$acc parallel loop collapse(2) gang vector default(present) private(k) copyin(stage)
         do k = 1, nBubs
             do l = 1, 3
-                mtn_dposdt(k, l, stage) = 0._wp
+                mtn_dposdt(k, l, stage) = mtn_vel(k, l, 1)
                 mtn_dveldt(k, l, stage) = 0._wp
             end do
         end do
@@ -810,6 +810,9 @@ contains
                     ! Limiting void fraction given max value
                     q_beta%vf(1)%sf(j, k, l) = max(q_beta%vf(1)%sf(j, k, l), &
                                                    1._wp - lag_params%valmaxvoid)
+                    ! Map void fraction into primitive alphas for tracking
+                    q_prim_vf(E_idx + 1)%sf(j, k, l) = q_beta%vf(1)%sf(j, k, l)
+                    q_prim_vf(E_idx + 2)%sf(j, k, l) = 1._wp - q_beta%vf(1)%sf(j, k, l)
                 end do
             end do
         end do
