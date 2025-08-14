@@ -68,8 +68,17 @@ module m_bubbles_EL
     real(wp) :: Rmax_glb, Rmin_glb       !< Maximum and minimum bubbe size in the local domain
     type(vector_field) :: q_beta                !< Projection of the lagrangian particles in the Eulerian framework
     integer :: q_beta_idx                       !< Size of the q_beta vector field
+    real(wp) :: next_inlet_time                 !< Time for next bubble injection
+    integer :: next_inlet_idx                   !< Index of the next bubble template
+    integer :: num_inlet_templates              !< Number of bubble templates
+    integer :: next_lag_id                      !< Next global ID for injected bubbles
 
-    !$acc declare create(nBubs, Rmax_glb, Rmin_glb, q_beta, q_beta_idx)
+    real(wp), allocatable, dimension(:) :: inlet_spawn_times  !< Scheduled injection times
+    real(wp), allocatable, dimension(:, :) :: inlet_templates !< Future bubble templates
+    real(wp), dimension(8) :: inlet_template                  !< Initial bubble state for injection
+
+    !$acc declare create(nBubs, Rmax_glb, Rmin_glb, q_beta, q_beta_idx, next_inlet_time, &
+    !$acc                 next_inlet_idx, num_inlet_templates, next_lag_id)
 
 contains
 
@@ -194,11 +203,12 @@ contains
 
         type(scalar_field), dimension(sys_size), intent(inout) :: q_cons_vf
 
-        real(wp), dimension(8) :: inputBubble
+        real(wp), dimension(9) :: inputBubble
         real(wp) :: qtime
         integer :: id, bub_id, save_count
         integer :: i, ios
         logical :: file_exist, indomain
+        integer :: num_lines
 
         character(LEN=path_len + 2*name_len) :: path_D_dir !<
 
@@ -219,24 +229,40 @@ contains
             if (proc_rank == 0) print *, 'Reading lagrange bubbles input file.'
             inquire (file='input/lag_bubbles.dat', exist=file_exist)
             if (file_exist) then
+                ! Count number of lines
                 open (94, file='input/lag_bubbles.dat', form='formatted', iostat=ios)
+                num_lines = 0
                 do while (ios == 0)
-                    read (94, *, iostat=ios) (inputBubble(i), i=1, 8)
+                    read (94, *, iostat=ios)
+                    if (ios == 0) num_lines = num_lines + 1
+                end do
+                rewind(94)
+                allocate(inlet_templates(num_lines, 8))
+                allocate(inlet_spawn_times(num_lines))
+                num_inlet_templates = 0
+                ios = 0
+                do while (ios == 0)
+                    read (94, *, iostat=ios) (inputBubble(i), i=1, 9)
                     if (ios /= 0) cycle
-                    indomain = particle_in_domain(inputBubble(1:3))
                     id = id + 1
-                    if (id > lag_params%nBubs_glb .and. proc_rank == 0) then
-                        call s_mpi_abort("Current number of bubbles is larger than nBubs_glb")
-                    end if
-                    if (indomain) then
+                    indomain = particle_in_domain(inputBubble(1:3))
+                    if (inputBubble(9) <= qtime .and. indomain .and. bub_id < lag_params%nBubs_glb) then
                         bub_id = bub_id + 1
-                        call s_add_bubbles(inputBubble, q_cons_vf, bub_id)
-                        lag_id(bub_id, 1) = id      !global ID
-                        lag_id(bub_id, 2) = bub_id  !local ID
-                        nBubs = bub_id              ! local number of bubbles
+                        call s_add_bubbles(inputBubble(1:8), q_cons_vf, bub_id)
+                        lag_id(bub_id, 1) = id
+                        lag_id(bub_id, 2) = bub_id
+                        nBubs = bub_id
+                    else
+                        num_inlet_templates = num_inlet_templates + 1
+                        inlet_templates(num_inlet_templates, :) = inputBubble(1:8)
+                        inlet_spawn_times(num_inlet_templates) = inputBubble(9)
                     end if
                 end do
                 close (94)
+                next_inlet_idx = 1
+                if (num_inlet_templates > 0) then
+                    next_inlet_time = inlet_spawn_times(1)
+                end if
             else
                 call s_mpi_abort("Initialize the lagrange bubbles in input/lag_bubbles.dat")
             end if
@@ -273,6 +299,9 @@ contains
             call s_write_restart_lag_bubbles(save_count) ! Needed for post_processing
             call s_write_void_evol(qtime)
         end if
+
+        next_lag_id = id + 1
+        !$acc update device(next_lag_id)
 
     end subroutine s_read_input_bubbles
 
@@ -613,11 +642,11 @@ contains
 
         if (adap_dt .and. adap_dt_stop_max > 0) call s_mpi_abort("Adaptive time stepping failed to converge.")
 
-        ! Bubbles remain in a fixed position
+        ! Translate bubbles with their prescribed velocity
         !$acc parallel loop collapse(2) gang vector default(present) private(k) copyin(stage)
         do k = 1, nBubs
             do l = 1, 3
-                mtn_dposdt(k, l, stage) = 0._wp
+                mtn_dposdt(k, l, stage) = mtn_vel(k, l, 1)
                 mtn_dveldt(k, l, stage) = 0._wp
             end do
         end do
@@ -639,7 +668,7 @@ contains
 
         integer :: i, j, k, l
 
-        if (.not. adap_dt) call s_smear_voidfraction()
+        call s_smear_voidfraction(q_prim_vf)
 
         if (lag_params%solver_approach == 2) then
 
@@ -759,8 +788,9 @@ contains
     end subroutine s_compute_cson_from_pinf
 
     !>  The purpose of this subroutine is to smear the effect of the bubbles in the Eulerian framework
-    subroutine s_smear_voidfraction()
+    subroutine s_smear_voidfraction(q_prim_vf)
 
+        type(scalar_field), dimension(sys_size), intent(inout), optional :: q_prim_vf
         integer :: i, j, k, l
 
         call nvtxStartRange("BUBBLES-LAGRANGE-KERNELS")
@@ -788,6 +818,11 @@ contains
                     ! Limiting void fraction given max value
                     q_beta%vf(1)%sf(j, k, l) = max(q_beta%vf(1)%sf(j, k, l), &
                                                    1._wp - lag_params%valmaxvoid)
+                    if (present(q_prim_vf)) then
+                        ! Map void fraction into primitive alphas for tracking
+                        q_prim_vf(E_idx + 1)%sf(j, k, l) = q_beta%vf(1)%sf(j, k, l)
+                        q_prim_vf(E_idx + 2)%sf(j, k, l) = 1._wp - q_beta%vf(1)%sf(j, k, l)
+                    end if
                 end do
             end do
         end do
@@ -795,6 +830,37 @@ contains
         call nvtxEndRange
 
     end subroutine s_smear_voidfraction
+
+    !> Inject a new bubble from the template list when the inlet is enabled
+    subroutine s_try_inject_bubble(q_cons_vf, q_prim_vf)
+        type(scalar_field), dimension(sys_size), intent(inout) :: q_cons_vf
+        type(scalar_field), dimension(sys_size), intent(inout) :: q_prim_vf
+        integer :: k
+
+        if (.not. lag_params%bubble_inlet) return
+        if (next_inlet_idx > num_inlet_templates) return
+        if (mytime < next_inlet_time) return
+
+        if (particle_in_domain(inlet_templates(next_inlet_idx, 1:3))) then
+            if (nBubs < lag_params%nBubs_glb) then
+                k = nBubs + 1
+                call s_add_bubbles(inlet_templates(next_inlet_idx, :), q_cons_vf, k)
+                lag_id(k, 1) = next_lag_id
+                lag_id(k, 2) = k
+                nBubs = k
+                next_lag_id = next_lag_id + 1
+                !$acc update device(lag_id, bub_R0, Rmax_stats, Rmin_stats, gas_mg, gas_betaT, gas_betaC, &
+                !$acc                 bub_dphidt, gas_p, gas_mv, intfc_rad, intfc_vel, mtn_pos, mtn_posPrev, mtn_vel, mtn_s, nBubs, next_lag_id)
+                call s_smear_voidfraction(q_prim_vf)
+            end if
+        end if
+
+        next_inlet_idx = next_inlet_idx + 1
+        if (next_inlet_idx <= num_inlet_templates) then
+            next_inlet_time = inlet_spawn_times(next_inlet_idx)
+        end if
+
+    end subroutine s_try_inject_bubble
 
     !> The purpose of this procedure is obtain the bubble driving pressure p_inf
         !! @param bub_id Particle identifier
@@ -1016,32 +1082,30 @@ contains
     !>  This subroutine updates the Lagrange variables using the tvd RK time steppers.
         !!      The time derivative of the bubble variables must be stored at every stage to avoid precision errors.
         !! @param stage Current tvd RK stage
-    impure subroutine s_update_lagrange_tdv_rk(stage)
+    impure subroutine s_update_lagrange_tdv_rk(q_cons_vf, q_prim_vf, stage)
 
+        type(scalar_field), dimension(sys_size), intent(inout) :: q_cons_vf
+        type(scalar_field), dimension(sys_size), intent(inout) :: q_prim_vf
         integer, intent(in) :: stage
 
         integer :: k
+        integer, dimension(3) :: cell
 
         if (time_stepper == 1) then ! 1st order TVD RK
-            !$acc parallel loop gang vector default(present) private(k)
+            !$acc parallel loop gang vector default(present) private(k, cell)
             do k = 1, nBubs
                 !u{1} = u{n} +  dt * RHS{n}
                 intfc_rad(k, 1) = intfc_rad(k, 1) + dt*intfc_draddt(k, 1)
                 intfc_vel(k, 1) = intfc_vel(k, 1) + dt*intfc_dveldt(k, 1)
                 mtn_pos(k, 1:3, 1) = mtn_pos(k, 1:3, 1) + dt*mtn_dposdt(k, 1:3, 1)
+                cell = -buff_size
+                call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                 mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + dt*mtn_dveldt(k, 1:3, 1)
                 gas_p(k, 1) = gas_p(k, 1) + dt*gas_dpdt(k, 1)
                 gas_mv(k, 1) = gas_mv(k, 1) + dt*gas_dmvdt(k, 1)
             end do
 
-            call s_transfer_data_to_tmp()
-            call s_write_void_evol(mytime)
-            if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
-
-            if (lag_params%write_bubbles) then
-                !$acc update host(gas_p, gas_mv, intfc_rad, intfc_vel)
-                call s_write_lag_particles(mytime)
-            end if
+            ! Finalization handled outside the time-stepper-specific blocks
 
         elseif (time_stepper == 2) then ! 2nd order TVD RK
             if (stage == 1) then
@@ -1063,19 +1127,14 @@ contains
                     intfc_rad(k, 1) = intfc_rad(k, 1) + dt*(intfc_draddt(k, 1) + intfc_draddt(k, 2))/2._wp
                     intfc_vel(k, 1) = intfc_vel(k, 1) + dt*(intfc_dveldt(k, 1) + intfc_dveldt(k, 2))/2._wp
                     mtn_pos(k, 1:3, 1) = mtn_pos(k, 1:3, 1) + dt*(mtn_dposdt(k, 1:3, 1) + mtn_dposdt(k, 1:3, 2))/2._wp
+                    cell = -buff_size
+                    call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                     mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + dt*(mtn_dveldt(k, 1:3, 1) + mtn_dveldt(k, 1:3, 2))/2._wp
                     gas_p(k, 1) = gas_p(k, 1) + dt*(gas_dpdt(k, 1) + gas_dpdt(k, 2))/2._wp
                     gas_mv(k, 1) = gas_mv(k, 1) + dt*(gas_dmvdt(k, 1) + gas_dmvdt(k, 2))/2._wp
                 end do
 
-                call s_transfer_data_to_tmp()
-                call s_write_void_evol(mytime)
-                if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
-
-                if (lag_params%write_bubbles) then
-                    !$acc update host(gas_p, gas_mv, intfc_rad, intfc_vel)
-                    call s_write_lag_particles(mytime)
-                end if
+                ! Finalization handled outside the time-stepper-specific blocks
 
             end if
 
@@ -1104,31 +1163,121 @@ contains
                     gas_mv(k, 2) = gas_mv(k, 1) + dt*(gas_dmvdt(k, 1) + gas_dmvdt(k, 2))/4._wp
                 end do
             elseif (stage == 3) then
-                !$acc parallel loop gang vector default(present) private(k)
+                !$acc parallel loop gang vector default(present) private(k, cell)
                 do k = 1, nBubs
                     !u{n+1} = u{n} + (2/3) * dt * [(1/4)* RHS{n} + (1/4)* RHS{1} + RHS{2}]
                     intfc_rad(k, 1) = intfc_rad(k, 1) + (2._wp/3._wp)*dt*(intfc_draddt(k, 1)/4._wp + intfc_draddt(k, 2)/4._wp + intfc_draddt(k, 3))
                     intfc_vel(k, 1) = intfc_vel(k, 1) + (2._wp/3._wp)*dt*(intfc_dveldt(k, 1)/4._wp + intfc_dveldt(k, 2)/4._wp + intfc_dveldt(k, 3))
                     mtn_pos(k, 1:3, 1) = mtn_pos(k, 1:3, 1) + (2._wp/3._wp)*dt*(mtn_dposdt(k, 1:3, 1)/4._wp + mtn_dposdt(k, 1:3, 2)/4._wp + mtn_dposdt(k, 1:3, 3))
+                    cell = -buff_size
+                    call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                     mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + (2._wp/3._wp)*dt*(mtn_dveldt(k, 1:3, 1)/4._wp + mtn_dveldt(k, 1:3, 2)/4._wp + mtn_dveldt(k, 1:3, 3))
                     gas_p(k, 1) = gas_p(k, 1) + (2._wp/3._wp)*dt*(gas_dpdt(k, 1)/4._wp + gas_dpdt(k, 2)/4._wp + gas_dpdt(k, 3))
                     gas_mv(k, 1) = gas_mv(k, 1) + (2._wp/3._wp)*dt*(gas_dmvdt(k, 1)/4._wp + gas_dmvdt(k, 2)/4._wp + gas_dmvdt(k, 3))
                 end do
 
-                call s_transfer_data_to_tmp()
-                call s_write_void_evol(mytime)
-                if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
-
-                if (lag_params%write_bubbles) then
-                    !$acc update host(gas_p, gas_mv, intfc_rad, intfc_vel)
-                    call s_write_lag_particles(mytime)
-                end if
+                ! Finalization handled outside the time-stepper-specific blocks
 
             end if
 
         end if
 
+        if (stage == lag_num_ts) then
+            call s_migrate_bubbles()
+        end if
+        call s_transfer_data_to_tmp()
+        call s_smear_voidfraction(q_prim_vf)
+        if (stage == lag_num_ts) then
+            call s_try_inject_bubble(q_cons_vf, q_prim_vf)
+            call s_write_void_evol(mytime)
+            if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
+            if (lag_params%write_bubbles) then
+                !$acc update host(gas_p, gas_mv, intfc_rad, intfc_vel)
+                call s_write_lag_particles(mytime)
+            end if
+        end if
+
     end subroutine s_update_lagrange_tdv_rk
+
+    !> Synchronize bubbles across MPI ranks so particles crossing subdomain
+    !! boundaries are migrated to their new owner. Bubbles that leave the
+    !! global domain are discarded.
+    impure subroutine s_migrate_bubbles()
+        use m_mpi_proxy
+        integer :: i, k, ierr, total
+        integer, allocatable :: counts(:), displs(:)
+        real(wp), allocatable :: sendbuf(:,:), recvbuf(:,:)
+        integer, dimension(3) :: cell
+
+        allocate(sendbuf(max(1, nBubs), 21))
+        do k = 1, nBubs
+            sendbuf(k, 1) = lag_id(k, 1)
+            sendbuf(k, 2:4) = mtn_pos(k, 1:3, 1)
+            sendbuf(k, 5:7) = mtn_posPrev(k, 1:3, 1)
+            sendbuf(k, 8:10) = mtn_vel(k, 1:3, 1)
+            sendbuf(k, 11) = intfc_rad(k, 1)
+            sendbuf(k, 12) = intfc_vel(k, 1)
+            sendbuf(k, 13) = bub_R0(k)
+            sendbuf(k, 14) = Rmax_stats(k)
+            sendbuf(k, 15) = Rmin_stats(k)
+            sendbuf(k, 16) = bub_dphidt(k)
+            sendbuf(k, 17) = gas_p(k, 1)
+            sendbuf(k, 18) = gas_mv(k, 1)
+            sendbuf(k, 19) = gas_mg(k)
+            sendbuf(k, 20) = gas_betaT(k)
+            sendbuf(k, 21) = gas_betaC(k)
+        end do
+
+        allocate(counts(num_procs), displs(num_procs))
+        call MPI_ALLGATHER(nBubs, 1, MPI_INTEGER, counts, 1, MPI_INTEGER, MPI_COMM_WORLD, ierr)
+        displs(1) = 0
+        do i = 2, num_procs
+            displs(i) = displs(i - 1) + counts(i - 1)
+        end do
+        total = displs(num_procs) + counts(num_procs)
+        allocate(recvbuf(max(1, total), 21))
+        call MPI_ALLGATHERV(sendbuf, nBubs*21, mpi_p, recvbuf, counts*21, displs*21, mpi_p, MPI_COMM_WORLD, ierr)
+        deallocate(sendbuf)
+
+        nBubs = 0
+        do i = 1, total
+            if (int(recvbuf(i, 1)) <= 0) cycle
+            if (particle_in_domain_physical(recvbuf(i, 2:4))) then
+                if (particle_in_domain(recvbuf(i, 2:4))) then
+                    nBubs = nBubs + 1
+                    lag_id(nBubs, 1) = int(recvbuf(i, 1))
+                    lag_id(nBubs, 2) = nBubs
+                    mtn_pos(nBubs, 1:3, 1) = recvbuf(i, 2:4)
+                    mtn_posPrev(nBubs, 1:3, 1) = recvbuf(i, 5:7)
+                    mtn_vel(nBubs, 1:3, 1) = recvbuf(i, 8:10)
+                    intfc_rad(nBubs, 1) = recvbuf(i, 11)
+                    intfc_vel(nBubs, 1) = recvbuf(i, 12)
+                    bub_R0(nBubs) = recvbuf(i, 13)
+                    Rmax_stats(nBubs) = recvbuf(i, 14)
+                    Rmin_stats(nBubs) = recvbuf(i, 15)
+                    bub_dphidt(nBubs) = recvbuf(i, 16)
+                    gas_p(nBubs, 1) = recvbuf(i, 17)
+                    gas_mv(nBubs, 1) = recvbuf(i, 18)
+                    gas_mg(nBubs) = recvbuf(i, 19)
+                    gas_betaT(nBubs) = recvbuf(i, 20)
+                    gas_betaC(nBubs) = recvbuf(i, 21)
+                    cell = -buff_size
+                    call s_locate_cell(mtn_pos(nBubs, 1:3, 1), cell, mtn_s(nBubs, 1:3, 1))
+                    gas_p(nBubs, 2) = gas_p(nBubs, 1)
+                    gas_mv(nBubs, 2) = gas_mv(nBubs, 1)
+                    intfc_rad(nBubs, 2) = intfc_rad(nBubs, 1)
+                    intfc_vel(nBubs, 2) = intfc_vel(nBubs, 1)
+                    mtn_pos(nBubs, 1:3, 2) = mtn_pos(nBubs, 1:3, 1)
+                    mtn_posPrev(nBubs, 1:3, 2) = mtn_posPrev(nBubs, 1:3, 1)
+                    mtn_vel(nBubs, 1:3, 2) = mtn_vel(nBubs, 1:3, 1)
+                    mtn_s(nBubs, 1:3, 2) = mtn_s(nBubs, 1:3, 1)
+                end if
+            end if
+        end do
+        deallocate(recvbuf, counts, displs)
+        !$acc update device(lag_id, bub_R0, Rmax_stats, Rmin_stats, gas_mg, gas_betaT, gas_betaC, &
+        !$acc bub_dphidt, gas_p, gas_mv, intfc_rad, intfc_vel, mtn_pos, mtn_posPrev, mtn_vel, mtn_s, nBubs)
+    end subroutine s_migrate_bubbles
 
     !> This subroutine returns the computational coordinate of the cell for the given position.
           !! @param pos Input coordinates
@@ -1647,7 +1796,7 @@ contains
 
         !$acc loop seq
         do i = bub_id, nBubs - 1
-            lag_id(i, 1) = lag_id(i + 1, 1)
+            lag_id(i, 1:2) = lag_id(i + 1, 1:2)
             bub_R0(i) = bub_R0(i + 1)
             Rmax_stats(i) = Rmax_stats(i + 1)
             Rmin_stats(i) = Rmin_stats(i + 1)
@@ -1670,7 +1819,10 @@ contains
         end do
 
         nBubs = nBubs - 1
-        !$acc update device(nBubs)
+        do i = 1, nBubs
+            lag_id(i, 2) = i
+        end do
+        !$acc update device(lag_id, nBubs)
 
     end subroutine s_remove_lag_bubble
 

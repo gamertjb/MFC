@@ -431,6 +431,8 @@ module m_derived_types
         logical :: massTransfer_model       !< Activate MASS transfer model at the bubble-liquid interface
         logical :: write_bubbles            !< Write files to track the bubble evolution each time step
         logical :: write_bubbles_stats      !< Write the maximum and minimum radius of each bubble
+        logical :: bubble_inlet             !< Reinsert bubbles at bottom when they exit the domain
+        real(wp) :: bubble_inlet_period     !< Injection interval for new bubbles
         integer :: nBubs_glb                !< Global number of bubbles
         real(wp) :: epsilonb         !< Standard deviation scaling for the gaussian function
         real(wp) :: charwidth        !< Domain virtual depth (z direction, for 2D simulations)

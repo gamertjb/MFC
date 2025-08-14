@@ -57,8 +57,9 @@ Ny = 60  # number of elements into y direction
 Nz = 60  # number of elements into z direction
 
 dt = 4.0e-08  # time-step - sec
-stopTime = 60.0e-06  # stop time - sec
-saveTime = 30.0e-06  # save time - sec
+stopTime = 5 * 60.0e-06  # stop time - sec
+saveTime = 5 * 30.0e-06  # save time - sec
+
 
 # Configuring case dictionary
 print(
@@ -124,9 +125,9 @@ print(
             "patch_icpp(1)%alpha_rho(2)": 0.0,
             "patch_icpp(1)%alpha(1)": 1.0,
             "patch_icpp(1)%alpha(2)": 0.0,
-            # Acoustic source
-            "acoustic_source": "T",
-            "num_source": 1,
+            # Acoustic source removed for steady bubble rise
+            "acoustic_source": "F",
+            "num_source": 0,
             "acoustic(1)%support": 3,
             "acoustic(1)%pulse": 1,
             "acoustic(1)%npulse": 10,
@@ -142,7 +143,8 @@ print(
             # Lagrangian Bubbles
             "bubbles_lagrange": "T",
             "bubble_model": 2,  # Keller-Miksis model
-            "lag_params%nBubs_glb": 1,
+            "lag_params%nBubs_glb": 20,
+            "lag_params%bubble_inlet": "T",
             "lag_params%solver_approach": 2,  # Two-way coupled
             "lag_params%cluster_type": 2,
             "lag_params%pressure_corrector": "T",
