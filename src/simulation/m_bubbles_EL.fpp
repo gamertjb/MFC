@@ -246,7 +246,7 @@ contains
                     inlet_templates(num_inlet_templates, :) = inputBubble
                     indomain = particle_in_domain(inputBubble(1:3))
                     id = id + 1
-                    if (indomain .and. bub_id < 1) then
+                    if (indomain .and. bub_id < lag_params%nBubs_glb) then
                         bub_id = bub_id + 1
                         call s_add_bubbles(inputBubble, q_cons_vf, bub_id)
                         lag_id(bub_id, 1) = id      !global ID
@@ -1046,17 +1046,24 @@ contains
         integer, intent(in) :: stage
 
         integer :: k
+        integer, dimension(3) :: cell
 
         if (time_stepper == 1) then ! 1st order TVD RK
-            !$acc parallel loop gang vector default(present) private(k)
+            !$acc parallel loop gang vector default(present) private(k, cell)
             do k = 1, nBubs
                 !u{1} = u{n} +  dt * RHS{n}
                 intfc_rad(k, 1) = intfc_rad(k, 1) + dt*intfc_draddt(k, 1)
                 intfc_vel(k, 1) = intfc_vel(k, 1) + dt*intfc_dveldt(k, 1)
                 mtn_pos(k, 1:3, 1) = mtn_pos(k, 1:3, 1) + dt*mtn_dposdt(k, 1:3, 1)
+                cell = -buff_size
+                call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                 mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + dt*mtn_dveldt(k, 1:3, 1)
                 gas_p(k, 1) = gas_p(k, 1) + dt*gas_dpdt(k, 1)
                 gas_mv(k, 1) = gas_mv(k, 1) + dt*gas_dmvdt(k, 1)
+            end do
+            ! remove bubbles that exit the domain
+            do k = nBubs, 1, -1
+                if (mtn_pos(k, 3, 1) >= z_cb(p)) call s_remove_lag_bubble(k)
             end do
 
             call s_transfer_data_to_tmp()
@@ -1068,18 +1075,11 @@ contains
                     mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
                     intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
                     intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                    lag_id(k, 1) = k
+                    lag_id(k, 2) = k
+                    cell = -buff_size
+                    call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                     nBubs = k
-                else
-                    do k = 1, nBubs
-                        if (mtn_pos(k, 3, 1) >= z_cb(p)) then
-                            mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                            mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                            mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
-                            intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
-                            intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
-                            exit
-                        end if
-                    end do
                 end if
                 next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
                 next_inlet_time = mytime + lag_params%bubble_inlet_period
@@ -1112,9 +1112,16 @@ contains
                     intfc_rad(k, 1) = intfc_rad(k, 1) + dt*(intfc_draddt(k, 1) + intfc_draddt(k, 2))/2._wp
                     intfc_vel(k, 1) = intfc_vel(k, 1) + dt*(intfc_dveldt(k, 1) + intfc_dveldt(k, 2))/2._wp
                     mtn_pos(k, 1:3, 1) = mtn_pos(k, 1:3, 1) + dt*(mtn_dposdt(k, 1:3, 1) + mtn_dposdt(k, 1:3, 2))/2._wp
+                    cell = -buff_size
+                    call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                     mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + dt*(mtn_dveldt(k, 1:3, 1) + mtn_dveldt(k, 1:3, 2))/2._wp
                     gas_p(k, 1) = gas_p(k, 1) + dt*(gas_dpdt(k, 1) + gas_dpdt(k, 2))/2._wp
                     gas_mv(k, 1) = gas_mv(k, 1) + dt*(gas_dmvdt(k, 1) + gas_dmvdt(k, 2))/2._wp
+                end do
+
+                ! remove bubbles that exit the domain
+                do k = nBubs, 1, -1
+                    if (mtn_pos(k, 3, 1) >= z_cb(p)) call s_remove_lag_bubble(k)
                 end do
 
                 call s_transfer_data_to_tmp()
@@ -1126,18 +1133,11 @@ contains
                         mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
                         intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
                         intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                        lag_id(k, 1) = k
+                        lag_id(k, 2) = k
+                        cell = -buff_size
+                        call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                         nBubs = k
-                    else
-                        do k = 1, nBubs
-                            if (mtn_pos(k, 3, 1) >= z_cb(p)) then
-                                mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                                mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                                mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
-                                intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
-                                intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
-                                exit
-                            end if
-                        end do
                     end if
                     next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
                     next_inlet_time = mytime + lag_params%bubble_inlet_period
@@ -1177,15 +1177,22 @@ contains
                     gas_mv(k, 2) = gas_mv(k, 1) + dt*(gas_dmvdt(k, 1) + gas_dmvdt(k, 2))/4._wp
                 end do
             elseif (stage == 3) then
-                !$acc parallel loop gang vector default(present) private(k)
+                !$acc parallel loop gang vector default(present) private(k, cell)
                 do k = 1, nBubs
                     !u{n+1} = u{n} + (2/3) * dt * [(1/4)* RHS{n} + (1/4)* RHS{1} + RHS{2}]
                     intfc_rad(k, 1) = intfc_rad(k, 1) + (2._wp/3._wp)*dt*(intfc_draddt(k, 1)/4._wp + intfc_draddt(k, 2)/4._wp + intfc_draddt(k, 3))
                     intfc_vel(k, 1) = intfc_vel(k, 1) + (2._wp/3._wp)*dt*(intfc_dveldt(k, 1)/4._wp + intfc_dveldt(k, 2)/4._wp + intfc_dveldt(k, 3))
                     mtn_pos(k, 1:3, 1) = mtn_pos(k, 1:3, 1) + (2._wp/3._wp)*dt*(mtn_dposdt(k, 1:3, 1)/4._wp + mtn_dposdt(k, 1:3, 2)/4._wp + mtn_dposdt(k, 1:3, 3))
+                    cell = -buff_size
+                    call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                     mtn_vel(k, 1:3, 1) = mtn_vel(k, 1:3, 1) + (2._wp/3._wp)*dt*(mtn_dveldt(k, 1:3, 1)/4._wp + mtn_dveldt(k, 1:3, 2)/4._wp + mtn_dveldt(k, 1:3, 3))
                     gas_p(k, 1) = gas_p(k, 1) + (2._wp/3._wp)*dt*(gas_dpdt(k, 1)/4._wp + gas_dpdt(k, 2)/4._wp + gas_dpdt(k, 3))
                     gas_mv(k, 1) = gas_mv(k, 1) + (2._wp/3._wp)*dt*(gas_dmvdt(k, 1)/4._wp + gas_dmvdt(k, 2)/4._wp + gas_dmvdt(k, 3))
+                end do
+
+                ! remove bubbles that exit the domain
+                do k = nBubs, 1, -1
+                    if (mtn_pos(k, 3, 1) >= z_cb(p)) call s_remove_lag_bubble(k)
                 end do
 
                 call s_transfer_data_to_tmp()
@@ -1197,18 +1204,11 @@ contains
                         mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
                         intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
                         intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
+                        lag_id(k, 1) = k
+                        lag_id(k, 2) = k
+                        cell = -buff_size
+                        call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
                         nBubs = k
-                    else
-                        do k = 1, nBubs
-                            if (mtn_pos(k, 3, 1) >= z_cb(p)) then
-                                mtn_pos(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                                mtn_posPrev(k, 1:3, 1) = inlet_templates(next_inlet_idx, 1:3)
-                                mtn_vel(k, 1:3, 1) = inlet_templates(next_inlet_idx, 4:6)
-                                intfc_rad(k, 1) = inlet_templates(next_inlet_idx, 7)
-                                intfc_vel(k, 1) = inlet_templates(next_inlet_idx, 8)
-                                exit
-                            end if
-                        end do
                     end if
                     next_inlet_idx = mod(next_inlet_idx, num_inlet_templates) + 1
                     next_inlet_time = mytime + lag_params%bubble_inlet_period
