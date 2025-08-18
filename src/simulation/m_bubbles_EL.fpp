@@ -1231,11 +1231,14 @@ contains
         allocate(counts(num_procs), displs(num_procs))
         counts = 0; displs = 0
         call MPI_ALLGATHER(nBubs, 1, MPI_INTEGER, counts, 1, MPI_INTEGER, MPI_COMM_WORLD, ierr)
+        do i = 1, num_procs
+            if (counts(i) < 0 .or. counts(i) > size(lag_id, 1)) counts(i) = 0
+        end do
         displs(1) = 0
         do i = 2, num_procs
             displs(i) = displs(i - 1) + counts(i - 1)
         end do
-        total = displs(num_procs) + counts(num_procs)
+        total = sum(counts)
         allocate(recvbuf(max(1, total), 21))
         allocate(counts21(num_procs), displs21(num_procs))
         counts21 = counts*21
