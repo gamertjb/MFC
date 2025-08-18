@@ -1205,7 +1205,7 @@ contains
     impure subroutine s_migrate_bubbles()
         use m_mpi_proxy
         integer :: i, k, ierr, total
-        integer, allocatable :: counts(:), displs(:)
+        integer, allocatable :: counts(:), displs(:), counts21(:), displs21(:)
         real(wp), allocatable :: sendbuf(:,:), recvbuf(:,:)
         integer, dimension(3) :: cell
 
@@ -1229,6 +1229,7 @@ contains
         end do
 
         allocate(counts(num_procs), displs(num_procs))
+        counts = 0; displs = 0
         call MPI_ALLGATHER(nBubs, 1, MPI_INTEGER, counts, 1, MPI_INTEGER, MPI_COMM_WORLD, ierr)
         displs(1) = 0
         do i = 2, num_procs
@@ -1236,8 +1237,11 @@ contains
         end do
         total = displs(num_procs) + counts(num_procs)
         allocate(recvbuf(max(1, total), 21))
-        call MPI_ALLGATHERV(sendbuf, nBubs*21, mpi_p, recvbuf, counts*21, displs*21, mpi_p, MPI_COMM_WORLD, ierr)
-        deallocate(sendbuf)
+        allocate(counts21(num_procs), displs21(num_procs))
+        counts21 = counts*21
+        displs21 = displs*21
+        call MPI_ALLGATHERV(sendbuf, nBubs*21, mpi_p, recvbuf, counts21, displs21, mpi_p, MPI_COMM_WORLD, ierr)
+        deallocate(sendbuf, counts, displs, counts21, displs21)
 
         nBubs = 0
         do i = 1, total
