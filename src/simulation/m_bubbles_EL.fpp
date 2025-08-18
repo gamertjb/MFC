@@ -1291,27 +1291,39 @@ contains
 
         integer :: i
 
-        do while (pos(1) < x_cb(cell(1) - 1))
+        ! Walk along each dimension while preventing the index from
+        ! moving outside the allocated grid bounds. This guards against
+        ! bubbles that briefly step outside the computational domain
+        ! (e.g., leaving through an open boundary) so we never access
+        ! cell-boundary arrays below their lower bounds.
+
+        do
+            if (pos(1) >= x_cb(cell(1) - 1) .or. cell(1) <= -buff_size) exit
             cell(1) = cell(1) - 1
         end do
 
-        do while (pos(1) > x_cb(cell(1)))
+        do
+            if (pos(1) <= x_cb(cell(1)) .or. cell(1) >= m + buff_size) exit
             cell(1) = cell(1) + 1
         end do
 
-        do while (pos(2) < y_cb(cell(2) - 1))
+        do
+            if (pos(2) >= y_cb(cell(2) - 1) .or. cell(2) <= -buff_size) exit
             cell(2) = cell(2) - 1
         end do
 
-        do while (pos(2) > y_cb(cell(2)))
+        do
+            if (pos(2) <= y_cb(cell(2)) .or. cell(2) >= n + buff_size) exit
             cell(2) = cell(2) + 1
         end do
 
         if (p > 0) then
-            do while (pos(3) < z_cb(cell(3) - 1))
+            do
+                if (pos(3) >= z_cb(cell(3) - 1) .or. cell(3) <= -buff_size) exit
                 cell(3) = cell(3) - 1
             end do
-            do while (pos(3) > z_cb(cell(3)))
+            do
+                if (pos(3) <= z_cb(cell(3)) .or. cell(3) >= p + buff_size) exit
                 cell(3) = cell(3) + 1
             end do
         end if
