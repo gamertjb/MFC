@@ -267,17 +267,20 @@ contains
                         lag_id(bub_id, 1) = id
                         lag_id(bub_id, 2) = bub_id
                         nBubs = bub_id
-                    else
-                        num_inlet_templates = num_inlet_templates + 1
-                        inlet_templates(num_inlet_templates, :) = inputBubble(1:8)
-                        inlet_spawn_times(num_inlet_templates) = spawn_time
                     end if
+                    num_inlet_templates = num_inlet_templates + 1
+                    inlet_templates(num_inlet_templates, :) = inputBubble(1:8)
+                    inlet_spawn_times(num_inlet_templates) = spawn_time
                 end do
                 close (94)
 
                 next_inlet_idx = 1
-                if (num_inlet_templates > 0) then
-                    next_inlet_time = inlet_spawn_times(1)
+                do while (next_inlet_idx <= num_inlet_templates .and. &
+                           inlet_spawn_times(next_inlet_idx) <= qtime)
+                    next_inlet_idx = next_inlet_idx + 1
+                end do
+                if (next_inlet_idx <= num_inlet_templates) then
+                    next_inlet_time = inlet_spawn_times(next_inlet_idx)
                 end if
             else
                 call s_mpi_abort("Initialize the lagrange bubbles in input/lag_bubbles.dat")
@@ -851,7 +854,7 @@ contains
     subroutine s_try_inject_bubble(q_cons_vf, q_prim_vf)
         type(scalar_field), dimension(sys_size), intent(inout) :: q_cons_vf
         type(scalar_field), dimension(sys_size), intent(inout) :: q_prim_vf
-        integer :: k
+        integer :: k, ierr
 
         if (.not. lag_params%bubble_inlet) return
         if (next_inlet_idx > num_inlet_templates) return
@@ -871,9 +874,17 @@ contains
             end if
         end if
 
-        next_inlet_idx = next_inlet_idx + 1
-        if (next_inlet_idx <= num_inlet_templates) then
-            next_inlet_time = inlet_spawn_times(next_inlet_idx)
+        if (mytime >= next_inlet_time) then
+            if (proc_rank == 0) then
+                next_inlet_idx = next_inlet_idx + 1
+                if (next_inlet_idx <= num_inlet_templates) then
+                    next_inlet_time = inlet_spawn_times(next_inlet_idx)
+                end if
+            end if
+#ifdef MFC_MPI
+            call MPI_BCAST(next_inlet_idx, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+            call MPI_BCAST(next_inlet_time, 1, mpi_p, 0, MPI_COMM_WORLD, ierr)
+#endif
         end if
 
     end subroutine s_try_inject_bubble
