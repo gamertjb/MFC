@@ -206,9 +206,11 @@ contains
         real(wp), dimension(9) :: inputBubble
         real(wp) :: qtime
         integer :: id, bub_id, save_count
-        integer :: i, ios
+        integer :: i, ios, ios2
         logical :: file_exist, indomain
         integer :: num_lines
+        character(len=256) :: line
+        real(wp) :: spawn_time
 
         character(LEN=path_len + 2*name_len) :: path_D_dir !<
 
@@ -229,24 +231,37 @@ contains
             if (proc_rank == 0) print *, 'Reading lagrange bubbles input file.'
             inquire (file='input/lag_bubbles.dat', exist=file_exist)
             if (file_exist) then
-                ! Count number of lines
+                ! Count number of template lines
                 open (94, file='input/lag_bubbles.dat', form='formatted', iostat=ios)
                 num_lines = 0
                 do while (ios == 0)
-                    read (94, *, iostat=ios)
+                    read (94, '(A)', iostat=ios)
                     if (ios == 0) num_lines = num_lines + 1
                 end do
                 rewind(94)
+
                 allocate(inlet_templates(num_lines, 8))
                 allocate(inlet_spawn_times(num_lines))
                 num_inlet_templates = 0
                 ios = 0
+
                 do while (ios == 0)
-                    read (94, *, iostat=ios) (inputBubble(i), i=1, 9)
-                    if (ios /= 0) cycle
+                    read (94, '(A)', iostat=ios) line
+                    if (ios /= 0) exit
                     id = id + 1
+                    read (line, *, iostat=ios2) (inputBubble(i), i=1, 9)
+                    if (ios2 == 0) then
+                        spawn_time = inputBubble(9)
+                    else
+                        read (line, *, iostat=ios2) (inputBubble(i), i=1, 8)
+                        if (lag_params%bubble_inlet_period == dflt_real) then
+                            spawn_time = qtime
+                        else
+                            spawn_time = qtime + (num_inlet_templates)*lag_params%bubble_inlet_period
+                        end if
+                    end if
                     indomain = particle_in_domain(inputBubble(1:3))
-                    if (inputBubble(9) <= qtime .and. indomain .and. bub_id < lag_params%nBubs_glb) then
+                    if (spawn_time <= qtime .and. indomain .and. bub_id < lag_params%nBubs_glb) then
                         bub_id = bub_id + 1
                         call s_add_bubbles(inputBubble(1:8), q_cons_vf, bub_id)
                         lag_id(bub_id, 1) = id
@@ -255,10 +270,11 @@ contains
                     else
                         num_inlet_templates = num_inlet_templates + 1
                         inlet_templates(num_inlet_templates, :) = inputBubble(1:8)
-                        inlet_spawn_times(num_inlet_templates) = inputBubble(9)
+                        inlet_spawn_times(num_inlet_templates) = spawn_time
                     end if
                 end do
                 close (94)
+
                 next_inlet_idx = 1
                 if (num_inlet_templates > 0) then
                     next_inlet_time = inlet_spawn_times(1)
