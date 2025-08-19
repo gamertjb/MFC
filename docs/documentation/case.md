@@ -784,6 +784,8 @@ When ``polytropic = 'F'``, the gas compression is modeled as non-polytropic due 
 | `massTransfer_model`  | Logical | Activates the interface mass transfer model               |
 | `write_bubbles`       | Logical | Write files to track the bubble evolution each time step  |
 | `write_bubbles_stats` | Logical | Write the maximum and minimum radius of each bubble       |
+| `bubble_inlet`        | Logical | Inject bubbles from `lag_bubbles.dat` at the bottom |
+| `bubble_inlet_period` | Real    | Period between bubble injections when spawn times are omitted |
 | `epsilonb`            | Real    | Standard deviation scaling for the gaussian function      |
 | `charwidth`           | Real    | Domain virtual depth (z direction, for 2D simulations)    |
 | `valmaxvoid`          | Real    | Maximum void fraction permitted                           |
@@ -795,6 +797,8 @@ When ``polytropic = 'F'``, the gas compression is modeled as non-polytropic due 
 | `diffcoefvap`         | Real    | Vapor diffusivity in the gas                              |
 
 - `nBubs_glb` Total number of bubbles. Their initial conditions need to be specified in the ./input/lag_bubbles.dat file. See the example cases for additional information.
+- `bubble_inlet` When true, bubbles listed in `lag_bubbles.dat` are injected at the bottom boundary. If a ninth column is present, its values give the injection times; otherwise bubbles are spawned every `bubble_inlet_period` until `lag_params%nBubs_glb` bubbles have been created. Bubbles rising past the top boundary are left in memory but do not trigger removal.
+- During smearing, the bubble void fraction is written to `alpha(2)` so it can be tracked against the ambient fluid.
 
 - `solver_approach` Specifies the Euler-Lagrange coupling method: [1] enables a one-way coupling approach, where the bubbles do not influence the Eulerian field. [2] activates the two-way coupling approach based on [Maeda and Colonius (2018)](references.md), where the effect of the bubbles is added in the Eulerian field as source terms.
 
