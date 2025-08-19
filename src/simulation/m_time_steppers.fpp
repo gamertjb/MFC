@@ -347,6 +347,7 @@ contains
         real(wp), intent(inout) :: time_avg
 
         integer :: i, j, k, l, q !< Generic loop iterator
+        integer, dimension(3) :: cell
 
         ! Stage 1 of 1
         call nvtxStartRange("TIMESTEP")
@@ -375,7 +376,7 @@ contains
             if (t_step == t_step_stop) return
         end if
 
-        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(stage=1)
+        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(q_cons_ts(1)%vf, q_prim_vf, stage=1)
 
         !$acc parallel loop collapse(4) gang vector default(present)
         do i = 1, sys_size
@@ -477,7 +478,7 @@ contains
             if (t_step == t_step_stop) return
         end if
 
-        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(stage=1)
+        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(q_cons_ts(1)%vf, q_prim_vf, stage=1)
 
         !$acc parallel loop collapse(4) gang vector default(present)
         do i = 1, sys_size
@@ -549,7 +550,7 @@ contains
 
         call s_compute_rhs(q_cons_ts(2)%vf, q_T_sf, q_prim_vf, bc_type, rhs_vf, pb_ts(2)%sf, rhs_pb, mv_ts(2)%sf, rhs_mv, t_step, time_avg, 2)
 
-        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(stage=2)
+        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(q_cons_ts(1)%vf, q_prim_vf, stage=2)
 
         !$acc parallel loop collapse(4) gang vector default(present)
         do i = 1, sys_size
@@ -659,7 +660,7 @@ contains
             if (t_step == t_step_stop) return
         end if
 
-        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(stage=1)
+        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(q_cons_ts(1)%vf, q_prim_vf, stage=1)
 
         !$acc parallel loop collapse(4) gang vector default(present)
         do i = 1, sys_size
@@ -731,7 +732,7 @@ contains
 
         call s_compute_rhs(q_cons_ts(2)%vf, q_T_sf, q_prim_vf, bc_type, rhs_vf, pb_ts(2)%sf, rhs_pb, mv_ts(2)%sf, rhs_mv, t_step, time_avg, 2)
 
-        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(stage=2)
+        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(q_cons_ts(1)%vf, q_prim_vf, stage=2)
 
         !$acc parallel loop collapse(4) gang vector default(present)
         do i = 1, sys_size
@@ -804,7 +805,7 @@ contains
         ! Stage 3 of 3
         call s_compute_rhs(q_cons_ts(2)%vf, q_T_sf, q_prim_vf, bc_type, rhs_vf, pb_ts(2)%sf, rhs_pb, mv_ts(2)%sf, rhs_mv, t_step, time_avg, 3)
 
-        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(stage=3)
+        if (bubbles_lagrange .and. .not. adap_dt) call s_update_lagrange_tdv_rk(q_cons_ts(1)%vf, q_prim_vf, stage=3)
 
         !$acc parallel loop collapse(4) gang vector default(present)
         do i = 1, sys_size
@@ -925,6 +926,8 @@ contains
         integer, intent(in) :: stage
 
         type(vector_field) :: gm_alpha_qp
+        integer :: k
+        integer, dimension(3) :: cell
 
         call s_convert_conservative_to_primitive_variables( &
             q_cons_ts(1)%vf, &
@@ -941,8 +944,21 @@ contains
 
             call s_populate_variables_buffers(bc_type, q_prim_vf, pb_ts(1)%sf, mv_ts(1)%sf)
             call s_compute_bubble_EL_dynamics(q_prim_vf, stage)
+            if (adap_dt) then
+                !$acc parallel loop gang vector default(present) private(cell)
+                do k = 1, nBubs
+                    mtn_posPrev(k, 1:3, 1) = mtn_pos(k, 1:3, 1)
+                    mtn_pos(k, 1:3, 1) = mtn_pos(k, 1:3, 1) + dt*mtn_vel(k, 1:3, 1)
+                    cell = -buff_size
+                    call s_locate_cell(mtn_pos(k, 1:3, 1), cell, mtn_s(k, 1:3, 1))
+                end do
+            end if
             call s_transfer_data_to_tmp()
-            call s_smear_voidfraction()
+            call s_smear_voidfraction(q_prim_vf)
+            if (adap_dt .and. stage == 3) then
+                call s_migrate_bubbles()
+                call s_try_inject_bubble(q_cons_ts(1)%vf, q_prim_vf)
+            end if
             if (stage == 3) then
                 if (lag_params%write_bubbles_stats) call s_calculate_lag_bubble_stats()
                 if (lag_params%write_bubbles) then
