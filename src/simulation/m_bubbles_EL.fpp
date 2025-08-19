@@ -1204,12 +1204,15 @@ contains
     !! global domain are discarded.
     impure subroutine s_migrate_bubbles()
         use m_mpi_proxy
-        integer :: i, k, ierr, total
-        integer, allocatable :: counts(:), displs(:), counts21(:), displs21(:)
+        integer :: i, k, ierr, max_bubs, offset
+        integer, allocatable :: counts(:)
         real(wp), allocatable :: sendbuf(:,:), recvbuf(:,:)
         integer, dimension(3) :: cell
 
-        allocate(sendbuf(max(1, nBubs), 21))
+        max_bubs = size(lag_id, 1)
+
+        allocate(sendbuf(max_bubs, 21))
+        sendbuf = 0._wp
         do k = 1, nBubs
             sendbuf(k, 1) = lag_id(k, 1)
             sendbuf(k, 2:4) = mtn_pos(k, 1:3, 1)
@@ -1228,60 +1231,52 @@ contains
             sendbuf(k, 21) = gas_betaC(k)
         end do
 
-        allocate(counts(num_procs), displs(num_procs))
-        counts = 0; displs = 0
+        allocate(counts(num_procs))
         call MPI_ALLGATHER(nBubs, 1, MPI_INTEGER, counts, 1, MPI_INTEGER, MPI_COMM_WORLD, ierr)
-        do i = 1, num_procs
-            if (counts(i) < 0 .or. counts(i) > size(lag_id, 1)) counts(i) = 0
-        end do
-        displs(1) = 0
-        do i = 2, num_procs
-            displs(i) = displs(i - 1) + counts(i - 1)
-        end do
-        total = sum(counts)
-        allocate(recvbuf(max(1, total), 21))
-        allocate(counts21(num_procs), displs21(num_procs))
-        counts21 = counts*21
-        displs21 = displs*21
-        call MPI_ALLGATHERV(sendbuf, nBubs*21, mpi_p, recvbuf, counts21, displs21, mpi_p, MPI_COMM_WORLD, ierr)
-        deallocate(sendbuf, counts, displs, counts21, displs21)
+
+        allocate(recvbuf(max_bubs*num_procs, 21))
+        call MPI_ALLGATHER(sendbuf, max_bubs*21, mpi_p, recvbuf, max_bubs*21, mpi_p, MPI_COMM_WORLD, ierr)
+        deallocate(sendbuf)
 
         nBubs = 0
-        do i = 1, total
-            if (int(recvbuf(i, 1)) <= 0) cycle
-            if (particle_in_domain_physical(recvbuf(i, 2:4))) then
-                if (particle_in_domain(recvbuf(i, 2:4))) then
-                    nBubs = nBubs + 1
-                    lag_id(nBubs, 1) = int(recvbuf(i, 1))
-                    lag_id(nBubs, 2) = nBubs
-                    mtn_pos(nBubs, 1:3, 1) = recvbuf(i, 2:4)
-                    mtn_posPrev(nBubs, 1:3, 1) = recvbuf(i, 5:7)
-                    mtn_vel(nBubs, 1:3, 1) = recvbuf(i, 8:10)
-                    intfc_rad(nBubs, 1) = recvbuf(i, 11)
-                    intfc_vel(nBubs, 1) = recvbuf(i, 12)
-                    bub_R0(nBubs) = recvbuf(i, 13)
-                    Rmax_stats(nBubs) = recvbuf(i, 14)
-                    Rmin_stats(nBubs) = recvbuf(i, 15)
-                    bub_dphidt(nBubs) = recvbuf(i, 16)
-                    gas_p(nBubs, 1) = recvbuf(i, 17)
-                    gas_mv(nBubs, 1) = recvbuf(i, 18)
-                    gas_mg(nBubs) = recvbuf(i, 19)
-                    gas_betaT(nBubs) = recvbuf(i, 20)
-                    gas_betaC(nBubs) = recvbuf(i, 21)
-                    cell = -buff_size
-                    call s_locate_cell(mtn_pos(nBubs, 1:3, 1), cell, mtn_s(nBubs, 1:3, 1))
-                    gas_p(nBubs, 2) = gas_p(nBubs, 1)
-                    gas_mv(nBubs, 2) = gas_mv(nBubs, 1)
-                    intfc_rad(nBubs, 2) = intfc_rad(nBubs, 1)
-                    intfc_vel(nBubs, 2) = intfc_vel(nBubs, 1)
-                    mtn_pos(nBubs, 1:3, 2) = mtn_pos(nBubs, 1:3, 1)
-                    mtn_posPrev(nBubs, 1:3, 2) = mtn_posPrev(nBubs, 1:3, 1)
-                    mtn_vel(nBubs, 1:3, 2) = mtn_vel(nBubs, 1:3, 1)
-                    mtn_s(nBubs, 1:3, 2) = mtn_s(nBubs, 1:3, 1)
+        do i = 1, num_procs
+            offset = (i - 1)*max_bubs
+            do k = 1, counts(i)
+                if (int(recvbuf(offset + k, 1)) <= 0) cycle
+                if (particle_in_domain_physical(recvbuf(offset + k, 2:4))) then
+                    if (particle_in_domain(recvbuf(offset + k, 2:4))) then
+                        nBubs = nBubs + 1
+                        lag_id(nBubs, 1) = int(recvbuf(offset + k, 1))
+                        lag_id(nBubs, 2) = nBubs
+                        mtn_pos(nBubs, 1:3, 1) = recvbuf(offset + k, 2:4)
+                        mtn_posPrev(nBubs, 1:3, 1) = recvbuf(offset + k, 5:7)
+                        mtn_vel(nBubs, 1:3, 1) = recvbuf(offset + k, 8:10)
+                        intfc_rad(nBubs, 1) = recvbuf(offset + k, 11)
+                        intfc_vel(nBubs, 1) = recvbuf(offset + k, 12)
+                        bub_R0(nBubs) = recvbuf(offset + k, 13)
+                        Rmax_stats(nBubs) = recvbuf(offset + k, 14)
+                        Rmin_stats(nBubs) = recvbuf(offset + k, 15)
+                        bub_dphidt(nBubs) = recvbuf(offset + k, 16)
+                        gas_p(nBubs, 1) = recvbuf(offset + k, 17)
+                        gas_mv(nBubs, 1) = recvbuf(offset + k, 18)
+                        gas_mg(nBubs) = recvbuf(offset + k, 19)
+                        gas_betaT(nBubs) = recvbuf(offset + k, 20)
+                        gas_betaC(nBubs) = recvbuf(offset + k, 21)
+                        cell = -buff_size
+                        call s_locate_cell(mtn_pos(nBubs, 1:3, 1), cell, mtn_s(nBubs, 1:3, 1))
+                        gas_p(nBubs, 2) = gas_p(nBubs, 1)
+                        gas_mv(nBubs, 2) = gas_mv(nBubs, 1)
+                        intfc_rad(nBubs, 2) = intfc_rad(nBubs, 1)
+                        intfc_vel(nBubs, 2) = intfc_vel(nBubs, 1)
+                        mtn_pos(nBubs, 1:3, 2) = mtn_pos(nBubs, 1:3, 1)
+                        mtn_posPrev(nBubs, 1:3, 2) = mtn_posPrev(nBubs, 1:3, 1)
+                        mtn_vel(nBubs, 1:3, 2) = mtn_vel(nBubs, 1:3, 1)
+                        mtn_s(nBubs, 1:3, 2) = mtn_s(nBubs, 1:3, 1)
+                    end if
                 end if
-            end if
+            end do
         end do
-        deallocate(recvbuf, counts, displs)
+        deallocate(recvbuf, counts)
         !$acc update device(lag_id, bub_R0, Rmax_stats, Rmin_stats, gas_mg, gas_betaT, gas_betaC, &
         !$acc bub_dphidt, gas_p, gas_mv, intfc_rad, intfc_vel, mtn_pos, mtn_posPrev, mtn_vel, mtn_s, nBubs)
     end subroutine s_migrate_bubbles
