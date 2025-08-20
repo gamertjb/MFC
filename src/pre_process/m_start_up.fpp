@@ -240,6 +240,9 @@ contains
         ! is or is not present in the designated location
         logical :: file_check
 
+        ! I/O status flag
+        integer :: ios
+
         ! Setting address of the local processor rank and time-step directory
         write (proc_rank_dir, '(A,I0)') '/p_all/p', proc_rank
         proc_rank_dir = trim(case_dir)//trim(proc_rank_dir)
@@ -266,8 +269,16 @@ contains
         ! If it exists, x_cb.dat is read
         if (file_check) then
             open (1, FILE=trim(file_loc), FORM='unformatted', &
-                  STATUS='old', ACTION='read')
-            read (1) x_cb(-1:m)
+                  STATUS='old', ACTION='read', IOSTAT=ios)
+            if (ios /= 0) then
+                call s_mpi_abort('Could not open x_cb.dat in '// &
+                                 trim(t_step_dir)//'. Exiting.')
+            end if
+            read (1, IOSTAT=ios) x_cb(-1:m)
+            if (ios /= 0) then
+                call s_mpi_abort('Error reading x_cb.dat in '// &
+                                 trim(t_step_dir)//'. File is likely corrupted.')
+            end if
             close (1)
         else
             call s_mpi_abort('File x_cb.dat is missing in '// &
@@ -296,8 +307,16 @@ contains
             ! If it exists, y_cb.dat is read
             if (file_check) then
                 open (1, FILE=trim(file_loc), FORM='unformatted', &
-                      STATUS='old', ACTION='read')
-                read (1) y_cb(-1:n)
+                      STATUS='old', ACTION='read', IOSTAT=ios)
+                if (ios /= 0) then
+                    call s_mpi_abort('Could not open y_cb.dat in '// &
+                                     trim(t_step_dir)//'. Exiting.')
+                end if
+                read (1, IOSTAT=ios) y_cb(-1:n)
+                if (ios /= 0) then
+                    call s_mpi_abort('Error reading y_cb.dat in '// &
+                                     trim(t_step_dir)//'. File is likely corrupted.')
+                end if
                 close (1)
             else
                 call s_mpi_abort('File y_cb.dat is missing in '// &
@@ -325,8 +344,16 @@ contains
                 ! If it exists, z_cb.dat is read
                 if (file_check) then
                     open (1, FILE=trim(file_loc), FORM='unformatted', &
-                          STATUS='old', ACTION='read')
-                    read (1) z_cb(-1:p)
+                          STATUS='old', ACTION='read', IOSTAT=ios)
+                    if (ios /= 0) then
+                        call s_mpi_abort('Could not open z_cb.dat in '// &
+                                         trim(t_step_dir)//'. Exiting.')
+                    end if
+                    read (1, IOSTAT=ios) z_cb(-1:p)
+                    if (ios /= 0) then
+                        call s_mpi_abort('Error reading z_cb.dat in '// &
+                                         trim(t_step_dir)//'. File is likely corrupted.')
+                    end if
                     close (1)
                 else
                     call s_mpi_abort('File z_cb.dat is missing in '// &
