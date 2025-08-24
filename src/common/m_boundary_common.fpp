@@ -1568,7 +1568,7 @@ contains
         integer :: file_id
         integer :: offset
         character(len=7) :: proc_rank_str
-        logical :: dir_check
+        logical :: dir_check, file_exist
 
         call s_pack_boundary_condition_buffers(q_prim_vf)
 
@@ -1631,7 +1631,14 @@ contains
         file_path = trim(step_dirpath)//'/bc_type.dat'
         inquire (FILE=trim(file_path), EXIST=file_exist)
         if (.not. file_exist) then
-            call s_mpi_abort(trim(file_path)//' is missing. Exiting.')
+            call s_assign_default_bc_type(bc_type)
+            do dir = 1, num_dims
+                do loc = -1, 1, 2
+                    bc_buffers(dir, loc)%sf = 0.0_wp
+                    !$acc update device(bc_buffers(dir, loc)%sf)
+                end do
+            end do
+            return
         end if
 
         open (1, FILE=trim(file_path), FORM='unformatted', STATUS='unknown')
@@ -1647,7 +1654,13 @@ contains
         file_path = trim(step_dirpath)//'/bc_buffers.dat'
         inquire (FILE=trim(file_path), EXIST=file_exist)
         if (.not. file_exist) then
-            call s_mpi_abort(trim(file_path)//' is missing. Exiting.')
+            do dir = 1, num_dims
+                do loc = -1, 1, 2
+                    bc_buffers(dir, loc)%sf = 0.0_wp
+                    !$acc update device(bc_buffers(dir, loc)%sf)
+                end do
+            end do
+            return
         end if
 
         open (1, FILE=trim(file_path), FORM='unformatted', STATUS='unknown')
@@ -1694,6 +1707,17 @@ contains
 
         write (proc_rank_str, '(I7.7)') proc_rank
         file_path = trim(file_loc)//'/bc_'//trim(proc_rank_str)//'.dat'
+        inquire (FILE=trim(file_path), EXIST=file_exist)
+        if (.not. file_exist) then
+            call s_assign_default_bc_type(bc_type)
+            do dir = 1, num_dims
+                do loc = -1, 1, 2
+                    bc_buffers(dir, loc)%sf = 0.0_wp
+                    !$acc update device(bc_buffers(dir, loc)%sf)
+                end do
+            end do
+            return
+        end if
         call MPI_File_open(MPI_COMM_SELF, trim(file_path), MPI_MODE_RDONLY, MPI_INFO_NULL, file_id, ierr)
 
         offset = 0
