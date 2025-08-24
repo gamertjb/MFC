@@ -1701,6 +1701,7 @@ contains
                     !$acc update device(bc_buffers(dir, loc)%sf)
                 end do
             end do
+            call s_create_mpi_types(bc_type)
             return
         end if
 
